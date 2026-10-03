@@ -34,11 +34,32 @@ Consequences that surprise people:
 ```bash
 npm run dev                 # localhost:3000
 npm run build               # Turbopack, no --turbopack flag needed
-node --test --experimental-strip-types tests/*.test.mjs   # the only test suite
-npx firebase-tools emulators:exec --only firestore,storage,auth "..." --project demo-kufc
+node --test --experimental-strip-types tests/academy.test.mjs   # pure unit, no emulator
+npm run test:rules          # security rules, needs Java 11+ (see below)
 ```
 
 `npx lint` is removed in Next 16; `npm run lint` runs the ESLint CLI directly.
+
+### Running the rules tests
+
+Java is required by the Firebase emulator and is **not on PATH by default on this
+machine**. It lives at `C:\Program Files\Eclipse Adoptium\jdk-11.0.32.101-hotspot`.
+Recent `firebase-tools` requires Java 21+, so the pinned 13.35.1 is used instead:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-11.0.32.101-hotspot"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+npm run test:rules
+```
+
+Test files are `.mjs` with TypeScript types stripped, so **do not add TS type
+annotations to them** — `--experimental-strip-types` fails on `.mjs` annotations.
+`tests/rules.test.mjs` seeds fixtures through the emulator REST API using the
+`owner` token, because `@firebase/rules-unit-testing` at this version exports no
+`withSecurityRulesDisabled` helper.
+
+A `PERMISSION_DENIED` line in the output is usually an expected denial from an
+`assertFails`, not a test failure. Judge by the pass/fail counts.
 
 ## Auth model
 
