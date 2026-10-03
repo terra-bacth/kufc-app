@@ -1,0 +1,178 @@
+rules_version = '2';
+
+// Coaching Academy — Firestore rules.
+// Role comes from users/{uid}.role, the same doc AuthContext reads, so the UI
+// and the rules can never disagree about who someone is.
+//
+// Everything is deny-by-default. Every allow below is an explicit grant.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers -----------------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Every rule below calls this first: a suspended or unapproved account is
+    // inert even if its role says admin.
+    function active() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function roleIs(role) {
+      return active() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    function isAdmin() { return roleIs('admin'); }
+    function isCoach() { return roleIs('coach'); }
+    function isStudent() { return roleIs('student'); }
+
+    // The coach/student record this login controls. A field that does not exist
+    // makes the expression error, which denies — fail closed.
+    function entityId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.linkedEntityId;
+    }
+
+    // Coach assigned to this batch? Compared against batches/{id}.coachId.
+    function assignedCoach(batchId) {
+      return isCoach() && entityId() == get(/databases/$(database)/documents/batches/$(batchId)).data.coachId;
+    }
+
+    // Student enrolled in this batch? Compared against students/{id}.batchId.
+    function enrolledStudent(batchId) {
+      return isStudent() && entityId() != null
+        && get(/databases/$(database)/documents/students/$(entityId())).data.batchId == batchId;
+    }
+
+    // ---- users -------------------------------------------------------------
+    // Self-registration (auth/register) writes exactly these six fields.
+    // The hasOnly() is the important part: without it an attacker could create
+    // their own account with role 'admin', or point linkedEntityId at someone
+    // else's coach record to inherit their batches.
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role in ['coach', 'student']
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly([
+             'email', 'displayName', 'phone', 'role', 'status', 'createdAt'
+           ]);
+
+      // People edit their own name and phone (profile page) and nothing else.
+      // role, status, and linkedEntityId stay admin-only.
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == userId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                 'displayName', 'phone'
+               ]));
+
+      allow delete: if isAdmin();
+    }
+
+    // Student enrolled in the batch this document belongs to? Used so a coach
+    // can read their own roster without seeing other batches.
+    function studentInMyBatch() {
+      return isCoach() && entityId() == get(/databases/$(database)/documents/batches/$(resource.data.batchId)).data.coachId;
+    }
+
+    // ---- academy structure -------------------------------------------------
+
+    match /branches/{branchId} {
+      allow read: if active();
+      allow write: if isAdmin();
+    }
+
+    match /batches/{batchId} {
+      allow read: if active();
+      allow write: if isAdmin();
+    }
+
+    match /coaches/{coachId} {
+      allow read: if active();
+      allow write: if isAdmin();
+    }
+
+    // Admin manages everyone. A coach reads the roster of their own batches
+    // (attendance marking needs it). A student reads only their own record so
+    // the dashboard can resolve their batch.
+    match /students/{studentId} {
+      allow read: if isAdmin() || studentInMyBatch() || (isStudent() && entityId() == studentId);
+      allow write: if isAdmin();
+    }
+
+    // ---- attendance --------------------------------------------------------
+    // Admins and the batch's assigned coach only. Students are denied: a record
+    // holds a map of every student in the batch, so read access would expose
+    // the whole class. The student attendance view needs per-student documents
+    // before it can be granted — see AGENTS.md.
+    match /attendance/{batchId}/records/{date} {
+      allow read, write: if isAdmin() || assignedCoach(batchId);
+    }
+
+    // ---- leaves ------------------------------------------------------------
+    // Anyone active may file a leave, but only as themselves. Admins review.
+    match /leaves/{leaveId} {
+      allow read: if isAdmin() || (active() && resource.data.requesterId == entityId());
+
+      // requesterType must match the caller's real role, so a coach cannot
+      // file as a student or vice versa.
+      allow create: if active()
+        && request.resource.data.requesterId == entityId()
+        && request.resource.data.status == 'pending'
+        && ((isCoach() && request.resource.data.requesterType == 'coach')
+            || (isStudent() && request.resource.data.requesterType == 'student'));
+
+      allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['status', 'reviewedBy', 'reviewedAt']);
+    }
+
+    // ---- materials ---------------------------------------------------------
+    match /materials/{materialId} {
+      allow read: if isAdmin()
+        || assignedCoach(resource.data.batchId)
+        || enrolledStudent(resource.data.batchId);
+
+      allow create: if isAdmin() || assignedCoach(request.resource.data.batchId);
+      allow delete: if isAdmin() || assignedCoach(resource.data.batchId);
+      allow update: if isAdmin();
+    }
+
+    // ---- tests and scores --------------------------------------------------
+    match /tests/{testId} {
+      allow read: if active();
+      allow write: if isAdmin() || assignedCoach(request.resource.data.batchId);
+    }
+
+    match /testScores/{testId}/scores/{studentId} {
+      allow read: if isAdmin()
+        || assignedCoach(get(/databases/$(database)/documents/tests/$(testId)).data.batchId)
+        || isStudent();
+
+      allow write: if isAdmin()
+        || assignedCoach(get(/databases/$(database)/documents/tests/$(testId)).data.batchId);
+    }
+
+    // ---- money -------------------------------------------------------------
+    match /invoices/{invoiceId} {
+      allow read: if isAdmin() || (isStudent() && resource.data.studentId == entityId());
+      allow write: if isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || (isStudent() && resource.data.studentId == entityId());
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // ---- catch-all ---------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

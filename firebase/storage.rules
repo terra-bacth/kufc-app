@@ -1,0 +1,71 @@
+rules_version = '2';
+
+// Coaching Academy — Storage rules.
+// Upload path is materials/{batchId}/{fileName} (see materials page).
+// Mirrors the Firestore rules: same helpers, same role source, same fail-closed
+// behaviour when linkedEntityId is absent.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function active() {
+      return signedIn()
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function roleIs(role) {
+      return active() && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    function isAdmin() { return roleIs('admin'); }
+    function isCoach() { return roleIs('coach'); }
+    function isStudent() { return roleIs('student'); }
+
+    function entityId() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.linkedEntityId;
+    }
+
+    function assignedCoach(batchId) {
+      return isCoach()
+        && entityId() == firestore.get(/databases/(default)/documents/batches/$(batchId)).data.coachId;
+    }
+
+    function enrolledStudent(batchId) {
+      return isStudent() && entityId() != null
+        && firestore.get(/databases/(default)/documents/students/$(entityId())).data.batchId == batchId;
+    }
+
+    // 20MB for PDFs and images, 100MB for video. Must stay in sync with the
+    // LIMITS map in the materials page.
+    function sizeOk() {
+      return request.resource.size < 20 * 1024 * 1024
+        || (request.resource.contentType.matches('video/.*')
+            && request.resource.size < 100 * 1024 * 1024);
+    }
+
+    function typeOk() {
+      return request.resource.contentType.matches('video/.*')
+        || request.resource.contentType.matches('image/.*')
+        || request.resource.contentType == 'application/pdf';
+    }
+
+    match /materials/{batchId}/{fileName} {
+      allow read: if isAdmin() || assignedCoach(batchId) || enrolledStudent(batchId);
+
+      allow create: if (isAdmin() || assignedCoach(batchId)) && typeOk() && sizeOk();
+
+      // Update would change bytes in place; treat it as a fresh upload.
+      allow update: if (isAdmin() || assignedCoach(batchId)) && typeOk() && sizeOk();
+
+      allow delete: if isAdmin() || assignedCoach(batchId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
