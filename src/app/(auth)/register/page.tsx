@@ -10,6 +10,7 @@ import { signUp } from "@/lib/firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { deleteUser } from "firebase/auth";
+import { validateBatchCode, normalizeBatchCode } from "@/lib/academy-validation";
 import { toast } from "sonner";
 
 export default function RegisterPage() {
@@ -19,10 +20,18 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"coach" | "student">("student");
+  const [batchCode, setBatchCode] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (role === "student") {
+      const codeError = validateBatchCode(batchCode);
+      if (codeError) {
+        toast.error(codeError);
+        return;
+      }
+    }
     setLoading(true);
     try {
       const cred = await signUp(email, password);
@@ -33,6 +42,9 @@ export default function RegisterPage() {
         phone: phone.trim(),
         role,
         status: "pending",
+        // Kept for the admin to verify at approval. The batch itself is resolved
+        // server-side on approval, never from this untrusted value.
+        ...(role === "student" ? { requestedBatchCode: normalizeBatchCode(batchCode) } : {}),
         createdAt: serverTimestamp(),
       });
       } catch (error) {
@@ -84,6 +96,24 @@ export default function RegisterPage() {
               </Button>
             </div>
           </div>
+          {role === "student" && (
+            <div className="space-y-2">
+              <Label htmlFor="batchCode">Batch join code</Label>
+              <Input
+                id="batchCode"
+                value={batchCode}
+                onChange={(e) => setBatchCode(e.target.value.toUpperCase())}
+                placeholder="e.g. K7M2QX"
+                autoCapitalize="characters"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={9}
+                className="font-mono tracking-widest"
+                required
+              />
+              <p className="text-xs text-muted-foreground">Ask your coach for the 6-character code. An admin still approves your account.</p>
+            </div>
+          )}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Creating..." : "Create account"}
           </Button>

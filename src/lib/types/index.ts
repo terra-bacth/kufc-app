@@ -15,6 +15,8 @@ export interface User {
   role: UserRole;
   status: UserStatus;
   linkedEntityId?: string;
+  /** Students only: the batch code they registered with, kept for audit. */
+  requestedBatchCode?: string;
   createdAt: Date;
 }
 
@@ -36,6 +38,8 @@ export interface Batch {
   sport: string;
   schedule: { days: string[]; startTime: string; endTime: string };
   monthlyFee: number;
+  /** Join code students enter at registration. Generated, not chosen by hand. */
+  code: string;
   status: "active" | "inactive";
   createdAt: Date;
 }

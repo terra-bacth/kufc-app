@@ -42,24 +42,27 @@ npm run test:rules          # security rules, needs Java 11+ (see below)
 
 ### Running the rules tests
 
-Java is required by the Firebase emulator and is **not on PATH by default on this
-machine**. It lives at `C:\Program Files\Eclipse Adoptium\jdk-11.0.32.101-hotspot`.
-Recent `firebase-tools` requires Java 21+, so the pinned 13.35.1 is used instead:
+Java 21+ is required by the emulator and is **not on PATH by default on this
+machine**. It lives at `C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot`.
 
 ```powershell
-$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-11.0.32.101-hotspot"
+$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot"
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
-npm run test:rules
+npm run test:rules      # 25 firestore tests
+npm run test:storage    # 16 storage tests
 ```
 
-Test files are `.mjs` with TypeScript types stripped, so **do not add TS type
-annotations to them** — `--experimental-strip-types` fails on `.mjs` annotations.
-`tests/rules.test.mjs` seeds fixtures through the emulator REST API using the
-`owner` token, because `@firebase/rules-unit-testing` at this version exports no
-`withSecurityRulesDisabled` helper.
+Both suites seed fixtures through the emulator REST API with the `owner` token,
+because `@firebase/rules-unit-testing` v5 exports no `withSecurityRulesDisabled`.
 
-A `PERMISSION_DENIED` line in the output is usually an expected denial from an
-`assertFails`, not a test failure. Judge by the pass/fail counts.
+Test files are `.mjs` with TS types stripped, so **do not add TS type annotations
+to them** — `--experimental-strip-types` fails on `.mjs` annotations.
+
+Storage tests use `getMetadata` for read checks, not download: `getBytesFromURL`
+is not exported in Node. It exercises the same read rule.
+
+A `PERMISSION_DENIED` line in output is usually an expected denial from
+`assertFails`, not a failure. Judge by pass/fail counts.
 
 ## Auth model
 
@@ -70,6 +73,20 @@ that doc, so approval and suspension take effect without a re-login.
 Self-registration creates `status: "pending"`. Only an admin flips it to `active`.
 The `(dashboard)` layout redirects on any non-active status, so an unapproved
 account can never see the app shell.
+
+### Students join by batch code
+
+Each batch gets a generated 6-character `code` (admin can regenerate). A student
+enters it at registration; it is stored on `users/{uid}.requestedBatchCode` and is
+**untrusted** — the approvals page resolves it against `batches/{id}.code` and
+refuses to approve if nothing matches.
+
+On approval the admin creates `students/{uid}` (doc id = the auth uid) and sets
+`linkedEntityId = uid`, so `entityId()` in the rules resolves without a second
+lookup. The code alphabet omits `0 O 1 I L` because codes get read aloud.
+
+Registrants cannot change `requestedBatchCode` after submitting, or a pending
+student could redirect their own enrolment.
 
 Firestore rules read the role from the same document, so the client and the rules
 cannot disagree about who someone is.
@@ -101,10 +118,10 @@ both together.**
   class. Per-student documents are needed before that view can ship.
 - **Coach batch filtering is client-side only.** Harmless to the user, but it is not
   a security control. The rules are.
-- **Self-registered students are not linked to `students/{studentId}`.** Approval
-  sets `users/{uid}.status` but nothing writes `linkedEntityId`, so student-scoped
-  rules and the dashboard cannot resolve a self-registered student's batch. Approving
-  a registration must also create or link the `students` record.
+- **Students registered before batch codes existed have no `requestedBatchCode`.**
+  The approvals page shows them as `unknown code —` and refuses to approve. An admin
+  must edit the batch they belong to and have them re-register, or the code needs a
+  manual fallback. No UI writes `requestedBatchCode` after the fact.
 - **PDF invoices and payment-reminder emails are not built**, despite being in the
   design spec.
 - **PWA icons are placeholders** re-using scaffold SVGs.

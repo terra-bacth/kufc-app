@@ -29,13 +29,19 @@ service firebase.storage {
       return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.linkedEntityId;
     }
 
+    // entityId() != null guards the comparison: an admin has no linkedEntityId,
+    // and comparing null against a missing batch field is an evaluation error,
+    // not a clean false. Guards keep it a clean false.
     function assignedCoach(batchId) {
       return isCoach()
-        && entityId() == firestore.get(/databases/(default)/documents/batches/$(batchId)).data.coachId;
+        && entityId() != null
+        && firestore.exists(/databases/(default)/documents/batches/$(batchId))
+        && firestore.get(/databases/(default)/documents/batches/$(batchId)).data.coachId == entityId();
     }
 
     function enrolledStudent(batchId) {
       return isStudent() && entityId() != null
+        && firestore.exists(/databases/(default)/documents/students/$(entityId()))
         && firestore.get(/databases/(default)/documents/students/$(entityId())).data.batchId == batchId;
     }
 

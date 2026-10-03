@@ -24,3 +24,24 @@ export function validateBatch(batch: Partial<Record<string, unknown>>) {
   }
   return null;
 }
+
+// Ambiguous glyphs (0/O, 1/I/L) are left out: codes get read aloud and typed
+// from a parent's phone.
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+export function generateBatchCode(length = 6) {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+}
+
+export function normalizeBatchCode(input: string) {
+  return input.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+export function validateBatchCode(input: string) {
+  const code = normalizeBatchCode(input);
+  if (code.length !== 6) return "Batch code must be 6 characters";
+  if (![...code].every((c) => CODE_ALPHABET.includes(c))) return "Batch code contains an invalid character";
+  return null;
+}

@@ -14,7 +14,7 @@ import { collection, query } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/contexts/auth-context";
 import { useRequireRole } from "@/lib/guard";
-import { validateBatch } from "@/lib/academy-validation";
+import { validateBatch, generateBatchCode, normalizeBatchCode, validateBatchCode } from "@/lib/academy-validation";
 import { toast } from "sonner";
 
 export default function BatchesPage() {
@@ -77,13 +77,28 @@ export default function BatchesPage() {
         await updateDocument("batches", editing.id, payload);
         toast.success("Batch updated");
       } else {
-        await addDocument("batches", { ...payload, status: "active", createdAt: new Date() });
-        toast.success("Batch created");
+        // Regenerate until unused: 31^6 is large, but "create" can be retried fast.
+        let code = generateBatchCode();
+        for (let i = 0; i < 5 && batches.some((b) => b.code === code); i++) code = generateBatchCode();
+        await addDocument("batches", { ...payload, code, status: "active", createdAt: new Date() });
+        toast.success(`Batch created — join code ${code}`);
       }
       setOpen(false);
       reset();
     } catch {
       toast.error("Failed to save batch");
+    }
+  }
+
+  async function regenerateCode(batchId: string) {
+    if (!confirm("New join code? The old one stops working immediately.")) return;
+    let code = generateBatchCode();
+    for (let i = 0; i < 5 && batches.some((b) => b.code === code); i++) code = generateBatchCode();
+    try {
+      await updateDocument("batches", batchId, { code });
+      toast.success(`New code: ${code}`);
+    } catch {
+      toast.error("Could not regenerate code");
     }
   }
 
@@ -115,6 +130,7 @@ export default function BatchesPage() {
                 <TableHead>Days</TableHead>
                 <TableHead>Time</TableHead>
                 <TableHead>Fee</TableHead>
+                {role === "admin" && <TableHead>Join code</TableHead>}
                 {role === "admin" && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
@@ -128,9 +144,11 @@ export default function BatchesPage() {
                   <TableCell>{b.schedule.days.join(", ")}</TableCell>
                   <TableCell>{b.schedule.startTime}–{b.schedule.endTime}</TableCell>
                   <TableCell>{b.monthlyFee}</TableCell>
+                  {role === "admin" && <TableCell className="font-mono">{b.code}</TableCell>}
                   {role === "admin" && (
                     <TableCell className="space-x-2">
                       <Button size="sm" variant="outline" onClick={() => { setEditing(b); setName(b.name); setBranchId(b.branchId); setCoachId(b.coachId); setSport(b.sport); setDays(b.schedule.days); setStartTime(b.schedule.startTime); setEndTime(b.schedule.endTime); setMonthlyFee(b.monthlyFee); setOpen(true); }}>Edit</Button>
+                      <Button size="sm" variant="outline" onClick={() => regenerateCode(b.id)}>New code</Button>
                       <Button size="sm" variant="destructive" onClick={() => handleDelete(b)}>Delete</Button>
                     </TableCell>
                   )}

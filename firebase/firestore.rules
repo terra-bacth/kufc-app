@@ -52,6 +52,13 @@ service cloud.firestore {
     // The hasOnly() is the important part: without it an attacker could create
     // their own account with role 'admin', or point linkedEntityId at someone
     // else's coach record to inherit their batches.
+    // ---- users -------------------------------------------------------------
+    // Self-registration (auth/register) writes exactly these fields. Coaches send
+    // none of the optional ones; students must send a 6-character batch code.
+    //
+    // requestedBatchCode is stored verbatim and NOT trusted: approval resolves it
+    // against batches/{id}.code. linkedEntityId stays forbidden, or a registrant
+    // could point themselves at an existing coach record and inherit its batches.
     match /users/{userId} {
       allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
 
@@ -61,11 +68,19 @@ service cloud.firestore {
         && request.resource.data.role in ['coach', 'student']
         && request.resource.data.status == 'pending'
         && request.resource.data.keys().hasOnly([
-             'email', 'displayName', 'phone', 'role', 'status', 'createdAt'
-           ]);
+             'email', 'displayName', 'phone', 'role', 'status',
+             'requestedBatchCode', 'createdAt'
+           ])
+        && ((request.resource.data.role == 'coach'
+             && !('requestedBatchCode' in request.resource.data))
+            || (request.resource.data.role == 'student'
+                && request.resource.data.requestedBatchCode is string
+                && request.resource.data.requestedBatchCode.size() == 6));
 
       // People edit their own name and phone (profile page) and nothing else.
-      // role, status, and linkedEntityId stay admin-only.
+      // role, status, linkedEntityId, and requestedBatchCode stay admin-only —
+      // the last one because changing it after the fact would let a pending
+      // student redirect their own enrolment.
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == userId
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
