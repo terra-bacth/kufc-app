@@ -85,6 +85,10 @@ On approval the admin creates `students/{uid}` (doc id = the auth uid) and sets
 `linkedEntityId = uid`, so `entityId()` in the rules resolves without a second
 lookup. The code alphabet omits `0 O 1 I L` because codes get read aloud.
 
+The code is a hint, not a gate. Match, mismatch, and absent all reach the admin,
+who picks from active batches in the approvals table. Batches predating the code
+field have `code === undefined`, so they never auto-match — expected, not a bug.
+
 Registrants cannot change `requestedBatchCode` after submitting, or a pending
 student could redirect their own enrolment.
 
@@ -118,10 +122,11 @@ both together.**
   class. Per-student documents are needed before that view can ship.
 - **Coach batch filtering is client-side only.** Harmless to the user, but it is not
   a security control. The rules are.
-- **Students registered before batch codes existed have no `requestedBatchCode`.**
-  The approvals page shows them as `unknown code —` and refuses to approve. An admin
-  must edit the batch they belong to and have them re-register, or the code needs a
-  manual fallback. No UI writes `requestedBatchCode` after the fact.
+- **A wrong or missing batch code never blocks approval.** `resolveStudentBatch` in
+  `src/lib/student-approval.ts` returns `needs-choice` and the approvals table shows
+  a batch picker. Do not "fix" this by rejecting unresolvable codes — a parent
+  reading six characters off a screenshot will typo one, and pre-code registrations
+  have none. A silent wrong batch is worse than one extra admin click.
 - **PDF invoices and payment-reminder emails are not built**, despite being in the
   design spec.
 - **PWA icons are placeholders** re-using scaffold SVGs.
