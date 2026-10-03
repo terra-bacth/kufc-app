@@ -1,0 +1,77 @@
+"use client";
+import { useMemo } from "react";
+import { useCollection } from "@/lib/hooks/use-collection";
+import { useRequireRole } from "@/lib/guard";
+import { db } from "@/lib/firebase/config";
+import { collection, query } from "firebase/firestore";
+import type { AttendanceRecord, Invoice, Payment, Student } from "@/lib/types";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
+type AnyRecord = AttendanceRecord & { id: string };
+
+export default function ReportsPage() {
+  useRequireRole("admin");
+  const { data: students = [] } = useCollection<Student>(query(collection(db, "students")));
+  const { data: invoices = [] } = useCollection<Invoice>(query(collection(db, "invoices")));
+  const { data: payments = [] } = useCollection<Payment>(query(collection(db, "payments")));
+  // ponytail: subcollection group read for reports; add date-range filters if the academy needs them
+  const { data: attendance = [] } = useCollection<AnyRecord>(query(collection(db, "attendance")));
+
+  const perStudent = useMemo(() => {
+    const tally = new Map<string, { present: number; total: number }>();
+    for (const rec of attendance) {
+      for (const [studentId, status] of Object.entries(rec.students ?? {})) {
+        const row = tally.get(studentId) ?? { present: 0, total: 0 };
+        row.total += 1;
+        if (status === "present" || status === "late") row.present += 1;
+        tally.set(studentId, row);
+      }
+    }
+    return students
+      .map((s) => {
+        const row = tally.get(s.id) ?? { present: 0, total: 0 };
+        return { name: s.name, pct: row.total ? Math.round((row.present / row.total) * 100) : 0, sessions: row.total };
+      })
+      .sort((a, b) => b.pct - a.pct);
+  }, [attendance, students]);
+
+  const collected = payments.reduce((s, p) => s + p.amount, 0);
+  const billed = invoices.reduce((s, i) => s + i.amount, 0);
+  const overdue = invoices.filter((i) => new Date(i.dueDate) < new Date() && payments.filter((p) => p.invoiceId === i.id).reduce((s, p) => s + p.amount, 0) < i.amount).length;
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-semibold">Reports</h1>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat label="Billed" value={billed} />
+        <Stat label="Collected" value={collected} />
+        <Stat label="Overdue invoices" value={overdue} />
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle>Attendance % per student</CardTitle></CardHeader>
+        <CardContent>
+          <BarChart width={700} height={320} data={perStudent.slice(0, 15)}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="name" fontSize={12} interval={0} angle={-20} textAnchor="end" height={70} />
+            <YAxis domain={[0, 100]} unit="%" fontSize={12} />
+            <Bar dataKey="pct" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <Card>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-2xl font-semibold">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
