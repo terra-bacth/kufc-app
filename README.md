@@ -40,7 +40,7 @@ docker compose up --build
 npm run demo:seed
 ```
 
-To use a different web port, set `WEB_PORT`, for example `WEB_PORT=3100 docker compose up --build`. The browser must be able to reach all four Firebase emulator ports (9099, 8080, 9199, and 4000). `NEXT_PUBLIC_FIREBASE_EMULATOR_HOST` defaults to `localhost`; if opening the app through a remote port-forwarding environment, override it with a hostname reachable by the browser, not a Docker service name. Environments that only forward the web port cannot use this emulator setup as-is because the Firebase browser SDK connects to the emulators directly.
+To use a different web port, set `WEB_PORT`, for example `WEB_PORT=3100 docker compose up --build`. The browser must be able to reach the Firebase emulator HTTP endpoints on ports 9099, 8080, and 9199. `NEXT_PUBLIC_FIREBASE_EMULATOR_HOST` defaults to `localhost`; it must resolve from the browser, not just inside Docker. The emulator setup is intended for local Docker Compose. Killercoda's HTTPS port proxy does not by itself make these HTTP emulator ports browser-accessible; use a local Docker host or a real Firebase project for remote preview. Killercoda's Next.js dev origin is allowlisted for HMR, but that does not proxy Firebase traffic.
 
 ## Use a real Firebase project
 
