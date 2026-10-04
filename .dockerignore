@@ -1,0 +1,12 @@
+.git
+node_modules
+.next
+out
+coverage
+.env*
+!.env.example
+firebase-debug.log
+firestore-debug.log
+storage-debug.log
+ui-debug.log
+.firebase

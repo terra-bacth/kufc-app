@@ -3,24 +3,32 @@ import { useMemo } from "react";
 import { useCollection } from "@/lib/hooks/use-collection";
 import { useRequireRole } from "@/lib/guard";
 import { db } from "@/lib/firebase/config";
-import { collectionGroup, query } from "firebase/firestore";
-import type { AttendanceEntry, AttendanceRecord, Invoice, Payment, Student } from "@/lib/types";
+import { collection, collectionGroup, query } from "firebase/firestore";
+import type { AttendanceEntry, Invoice, Payment, Student } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
-type AnyRecord = AttendanceRecord & { id: string };
-
 export default function ReportsPage() {
   useRequireRole("admin");
-  const { data: students = [] } = useCollection<Student>(query(collection(db, "students")));
-  const { data: invoices = [] } = useCollection<Invoice>(query(collection(db, "invoices")));
-  const { data: payments = [] } = useCollection<Payment>(query(collection(db, "payments")));
-    // Read per-student entries across every batch and session, then aggregate.
-  // The admin is the only role that can read all entries; students see only
-  // their own. This is the two-shape attendance model feeding the chart.
-  const { data: entries = [] } = useCollection<AttendanceEntry>(
-    query(collectionGroup(db, "entries")),
+
+  // Keep listener sources stable across renders; useCollection re-subscribes
+  // whenever its Query instance changes.
+  const studentsQuery = useMemo(() => query(collection(db, "students")), []);
+  const invoicesQuery = useMemo(() => query(collection(db, "invoices")), []);
+  const paymentsQuery = useMemo(() => query(collection(db, "payments")), []);
+  const attendanceEntriesQuery = useMemo(
+    () => query(collectionGroup(db, "entries")),
+    [],
   );
+
+  const { data: students = [] } = useCollection<Student>(studentsQuery);
+  const { data: invoices = [] } = useCollection<Invoice>(invoicesQuery);
+  const { data: payments = [] } = useCollection<Payment>(paymentsQuery);
+
+  // Read per-student entries across every batch and session, then aggregate.
+  // The admin is the only role that can read all entries; students see only
+  // their own. The per-student `entries` collection group is the chart's source.
+  const { data: entries = [] } = useCollection<AttendanceEntry>(attendanceEntriesQuery);
 
   const perStudent = useMemo(() => {
     const tally = new Map<string, { present: number; total: number }>();

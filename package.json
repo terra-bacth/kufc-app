@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "demo:seed": "node scripts/seed-demo.mjs",
     "lint": "eslint",
     "test": "node --test --experimental-strip-types tests/academy.test.mjs tests/batch-code.test.mjs tests/student-approval.test.mjs tests/attendance-calendar.test.mjs tests/invoice.test.mjs tests/notifications.test.mjs",
     "test:rules": "firebase emulators:exec --only firestore \"node --test --experimental-strip-types tests/rules.test.mjs\" --project demo-kufc",
