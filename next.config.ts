@@ -2,8 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Killercoda gives each forwarded app port a hostname like
-  // <workspace>-<port>.spca.r.killercoda.com. Allow its dev-only HMR requests.
-  allowedDevOrigins: ["*.spca.r.killercoda.com"],
+  // <workspace>-<port>.<region>.r.killercoda.com. Allow dev-only HMR requests
+  // across Killercoda regions (for example, `papa` and `spca`).
+  allowedDevOrigins: ["**.r.killercoda.com"],
 };
 
 export default nextConfig;
