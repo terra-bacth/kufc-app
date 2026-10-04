@@ -1,4 +1,39 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "name": "entries-studentId",
+      "queryScope": "COLLECTION_GROUP",
+      "collectionGroup": "entries",
+      "fields": [
+        { "fieldPath": "studentId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "name": "entries-studentId-date",
+      "queryScope": "COLLECTION_GROUP",
+      "collectionGroup": "entries",
+      "fields": [
+        { "fieldPath": "studentId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "name": "scores-studentId",
+      "queryScope": "COLLECTION_GROUP",
+      "collectionGroup": "scores",
+      "fields": [
+        { "fieldPath": "studentId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "name": "scores-studentId-testId",
+      "queryScope": "COLLECTION_GROUP",
+      "collectionGroup": "scores",
+      "fields": [
+        { "fieldPath": "studentId", "order": "ASCENDING" },
+        { "fieldPath": "testId", "order": "ASCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

@@ -23,7 +23,7 @@ export function deriveNotifications(input: {
 }, today = new Date()): Notification[] {
   const notices: Notification[] = [];
 
-  if (!input.paid && input.balance > 0) {
+  if (input.kind === "fee" && !input.paid && input.balance > 0) {
     const daysLeft = Math.ceil((input.dueDate.getTime() - today.getTime()) / 86400000);
     if (daysLeft < 0) {
       notices.push({
@@ -46,6 +46,32 @@ export function deriveNotifications(input: {
         severity: "due",
       });
     }
+  }
+
+  // Attendance: low attendance percentage triggers a reminder.
+  if (input.kind === "attendance" && typeof input.balance === "number" && input.balance < 60) {
+    notices.push({
+      id: `${input.kind}-${input.referenceId}-low`,
+      kind: input.kind,
+      referenceId: input.referenceId,
+      title: `Attendance is low: ${Math.round(input.balance)}%`,
+      body: input.detail,
+      date: input.dueDate,
+      severity: "due",
+    });
+  }
+
+  // Test result: a new score is available.
+  if (input.kind === "test" && input.paid === true && input.balance > 0) {
+    notices.push({
+      id: `${input.kind}-${input.referenceId}-new`,
+      kind: input.kind,
+      referenceId: input.referenceId,
+      title: `New result: ${input.title}`,
+      body: input.detail,
+      date: input.referenceDate,
+      severity: "due",
+    });
   }
 
   return notices;

@@ -5,8 +5,9 @@ import { useDocument } from "@/lib/hooks/use-document";
 import { useRequireRole } from "@/lib/guard";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
-import { collection, doc, query, where, writeBatch } from "firebase/firestore";
-import type { AttendanceStatus, Batch, Student } from "@/lib/types";
+import { collection, doc, getDoc, query, setDoc, where, writeBatch } from "firebase/firestore";
+import type { AttendanceStatus, Batch, Student, StudentRollup } from "@/lib/types";
+import { applyRank, bumpAttendance } from "@/lib/rollup";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,41 @@ export default function AttendancePage() {
         );
       }
       await batch.commit();
+      // Maintain per-student rollups (attendance stats + batch rank) so the
+      // student's progress report and any future parent-facing card never
+      // need read access to a classmate's marks. Rank is computed here,
+      // when the writer sees the whole batch.
+      try {
+        const rollupBatchIds = students.map((s) => s.id);
+        const defaults: StudentRollup = { id: "", studentId: "", batchId, sessionsAttended: 0, sessionsTotal: 0, attendancePct: 0, testAvg: 0, testCount: 0, rank: null, percentile: null, updatedAt: new Date() };
+        const rollups: StudentRollup[] = [];
+        for (const sid of rollupBatchIds) {
+          const snap = await getDoc(doc(db, "rollups", batchId, "students", sid));
+          rollups.push({ ...defaults, id: sid, studentId: sid, ...(snap.data() ?? {}) } as StudentRollup);
+        }
+        // Apply today's marks to the rollups being updated.
+        for (const sid of rollupBatchIds) {
+          const currentStatus = marks[sid] ?? (saved?.students?.[sid] ?? "absent");
+          const rollup = rollups.find((r) => r.id === sid);
+          if (rollup && (currentStatus === "present" || currentStatus === "late" || currentStatus === "absent")) {
+            const bumped = bumpAttendance({ sessionsAttended: rollup.sessionsAttended, sessionsTotal: rollup.sessionsTotal, attendancePct: rollup.attendancePct }, currentStatus);
+            rollup.sessionsAttended = bumped.sessionsAttended;
+            rollup.sessionsTotal = bumped.sessionsTotal;
+            rollup.attendancePct = bumped.attendancePct;
+            rollup.updatedAt = new Date();
+          }
+        }
+        // Apply rank across the entire batch using new attendance percentages.
+        const ranked = applyRank(rollups);
+        const rollBatch = writeBatch(db);
+        for (const r of ranked) {
+          rollBatch.set(doc(db, "rollups", batchId, "students", r.id), r, { merge: true });
+        }
+        await rollBatch.commit();
+      } catch {
+        // Rollup is best-effort: attendance docs are the authority.
+        // A failure to maintain the rollup must not roll back attendance.
+      }
       toast.success(`Attendance saved for ${entries.length} student(s)`);
     } catch {
       toast.error("Could not save attendance");

@@ -167,6 +167,26 @@ export interface Notification {
   severity: NotificationSeverity;
 }
 
+/**
+ * Per-student aggregate. Written by the coach on attendance and test save, so a
+ * student can read their own stats (and their rank) without ever touching a
+ * classmate's marks. Rank is computed at write time, when the writer can see
+ * the whole batch.
+ */
+export interface StudentRollup {
+  id: string;
+  studentId: string;
+  batchId: string;
+  attendancePct: number;
+  sessionsAttended: number;
+  sessionsTotal: number;
+  testAvg: number;
+  testCount: number;
+  rank: number | null;
+  percentile: number | null;
+  updatedAt: Date;
+}
+
 export interface Payment {
   id: string;
   invoiceId: string;
