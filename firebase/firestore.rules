@@ -122,12 +122,26 @@ service cloud.firestore {
     }
 
     // ---- attendance --------------------------------------------------------
-    // Admins and the batch's assigned coach only. Students are denied: a record
-    // holds a map of every student in the batch, so read access would expose
-    // the whole class. The student attendance view needs per-student documents
-    // before it can be granted — see AGENTS.md.
+    // Two shapes, deliberately:
+    //
+    //   records/{date}                  the whole class for one session. Denied to
+    //                                   students — it holds every student's mark.
+    //   records/{date}/entries/{sid}   one student's mark. A student may read exactly
+    //                                   their own entry, never a sibling's, which is
+    //                                   what makes the calendar view possible without
+    //                                   exposing the class.
+    //
+    // The coach writes both in one batch so the two cannot drift apart.
     match /attendance/{batchId}/records/{date} {
       allow read, write: if isAdmin() || assignedCoach(batchId);
+
+      match /entries/{studentId} {
+        allow read: if isAdmin()
+          || assignedCoach(batchId)
+          || (isStudent() && studentId == entityId() && enrolledStudent(batchId));
+
+        allow write: if isAdmin() || assignedCoach(batchId);
+      }
     }
 
     // ---- leaves ------------------------------------------------------------
@@ -164,10 +178,14 @@ service cloud.firestore {
       allow write: if isAdmin() || assignedCoach(request.resource.data.batchId);
     }
 
+    // Score docs are keyed by student id, so a student may read only their own
+    // across every test, and only for tests in their own batch.
     match /testScores/{testId}/scores/{studentId} {
       allow read: if isAdmin()
-        || assignedCoach(get(/databases/$(database)/documents/tests/$(testId)).data.batchId)
-        || isStudent();
+        || (isStudent()
+            && studentId == entityId()
+            && get(/databases/$(database)/documents/tests/$(testId)).data.batchId
+                 == get(/databases/$(database)/documents/students/$(entityId())).data.batchId);
 
       allow write: if isAdmin()
         || assignedCoach(get(/databases/$(database)/documents/tests/$(testId)).data.batchId);

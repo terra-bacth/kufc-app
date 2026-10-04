@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test --experimental-strip-types tests/academy.test.mjs tests/batch-code.test.mjs tests/student-approval.test.mjs",
+    "test": "node --test --experimental-strip-types tests/academy.test.mjs tests/batch-code.test.mjs tests/student-approval.test.mjs tests/attendance-calendar.test.mjs tests/invoice.test.mjs tests/notifications.test.mjs",
     "test:rules": "firebase emulators:exec --only firestore \"node --test --experimental-strip-types tests/rules.test.mjs\" --project demo-kufc",
     "test:storage": "firebase emulators:exec --only firestore,storage \"node --test --experimental-strip-types tests/storage-rules.test.mjs\" --project demo-kufc"
   },

@@ -91,6 +91,10 @@ async function seed() {
     batchId: IDS.batchA, date: "2026-01-05", markedBy: IDS.coachA, markedAt: now,
     students: { [IDS.studentARecord]: "present" }, coachPresent: true,
   });
+  await seedDoc(`attendance/${IDS.batchA}/records/2026-01-05/entries/${IDS.studentARecord}`, {
+    studentId: IDS.studentARecord, batchId: IDS.batchA, date: "2026-01-05",
+    status: "present", markedBy: IDS.coachA, markedAt: now,
+  });
 }
 
 before(async () => {
@@ -216,10 +220,66 @@ test("coach reads their own roster but not the other coach's", async () => {
 
 // --- students --------------------------------------------------------------
 
-test("students cannot read attendance at all", async () => {
+test("students cannot read the whole-session attendance doc", async () => {
   const db = dbFor(IDS.studentA);
   await assertFails(getDoc(doc(db, "attendance", IDS.batchA, "records", "2026-01-05")));
   await assertFails(setDoc(doc(db, "attendance", IDS.batchA, "records", "2026-01-08"), {}));
+});
+
+test("a student reads only their own attendance entry", async () => {
+  const db = dbFor(IDS.studentA);
+  await assertSucceeds(getDoc(doc(db, "attendance", IDS.batchA, "records", "2026-01-05", "entries", IDS.studentARecord)));
+  // Sibling in the same batch is still denied.
+  await assertFails(getDoc(doc(db, "attendance", IDS.batchA, "records", "2026-01-05", "entries", IDS.studentBRecord)));
+});
+
+test("a student cannot read an entry for a batch they are not in", async () => {
+  await assertFails(getDoc(doc(dbFor(IDS.studentB), "attendance", IDS.batchA, "records", "2026-01-05", "entries", IDS.studentARecord)));
+});
+
+test("a student cannot write their own attendance entry", async () => {
+  await assertFails(setDoc(doc(dbFor(IDS.studentA), "attendance", IDS.batchA, "records", "2026-02-09", "entries", IDS.studentARecord), {
+    studentId: IDS.studentARecord, batchId: IDS.batchA, date: "2026-02-09",
+    status: "present", markedBy: IDS.studentA, markedAt: new Date(),
+  }));
+});
+
+test("the assigned coach writes entries for their own batch only", async () => {
+  await assertSucceeds(setDoc(doc(dbFor(IDS.coachA), "attendance", IDS.batchA, "records", "2026-02-10", "entries", IDS.studentARecord), {
+    studentId: IDS.studentARecord, batchId: IDS.batchA, date: "2026-02-10",
+    status: "absent", markedBy: IDS.coachA, markedAt: new Date(),
+  }));
+  await assertFails(setDoc(doc(dbFor(IDS.coachB), "attendance", IDS.batchA, "records", "2026-02-11", "entries", IDS.studentARecord), {
+    studentId: IDS.studentARecord, batchId: IDS.batchA, date: "2026-02-11",
+    status: "absent", markedBy: IDS.coachB, markedAt: new Date(),
+  }));
+});
+
+test("a student reads their own score but not a batch-mate's", async () => {
+  const testId = "test-a";
+  await seedDoc(`tests/${testId}`, {
+    title: "Unit 1", batchId: IDS.batchA, totalMarks: 100, date: new Date("2026-01-12"),
+    createdBy: IDS.coachA, status: "completed", createdAt: new Date(),
+  });
+  await seedDoc(`testScores/${testId}/scores/${IDS.studentARecord}`, { studentId: IDS.studentARecord, marksObtained: 82 });
+  await seedDoc(`testScores/${testId}/scores/${IDS.studentBRecord}`, { studentId: IDS.studentBRecord, marksObtained: 40 });
+
+  await assertSucceeds(getDoc(doc(dbFor(IDS.studentA), "testScores", testId, "scores", IDS.studentARecord)));
+  await assertFails(getDoc(doc(dbFor(IDS.studentA), "testScores", testId, "scores", IDS.studentBRecord)));
+});
+
+test("a student cannot read a score for a test in another batch", async () => {
+  const otherTest = "test-b";
+  await seedDoc(`tests/${otherTest}`, {
+    title: "Batch B quiz", batchId: IDS.batchB, totalMarks: 50, date: new Date("2026-01-14"),
+    createdBy: IDS.coachB, status: "completed", createdAt: new Date(),
+  });
+  await seedDoc(`testScores/${otherTest}/scores/${IDS.studentARecord}`, { studentId: IDS.studentARecord, marksObtained: 30 });
+  await assertFails(getDoc(doc(dbFor(IDS.studentA), "testScores", otherTest, "scores", IDS.studentARecord)));
+});
+
+test("a student cannot write their own score", async () => {
+  await assertFails(updateDoc(doc(dbFor(IDS.studentA), "testScores", "test-a", "scores", IDS.studentARecord), { marksObtained: 100 }));
 });
 
 test("student reads own record and invoice, not others'", async () => {

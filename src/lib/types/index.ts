@@ -4,6 +4,8 @@ export type AttendanceStatus = "present" | "absent" | "late";
 export type LeaveStatus = "pending" | "approved" | "rejected";
 export type InvoiceStatus = "draft" | "sent" | "partial" | "paid" | "overdue";
 export type PaymentMethod = "cash" | "upi" | "bank_transfer" | "card";
+export type NotificationKind = "fee" | "attendance" | "material" | "test";
+export type NotificationSeverity = "due" | "overdue";
 export type FileType = "pdf" | "video" | "image";
 export type TestStatus = "upcoming" | "completed";
 
@@ -82,6 +84,17 @@ export interface AttendanceRecord {
   coachPresent: boolean;
 }
 
+/** One student's mark for one session. Readable by that student alone. */
+export interface AttendanceEntry {
+  id: string;
+  studentId: string;
+  batchId: string;
+  date: string; // YYYY-MM-DD
+  status: AttendanceStatus;
+  markedBy: string;
+  markedAt: Date;
+}
+
 export interface Leave {
   id: string;
   requestedBy: string;
@@ -141,6 +154,17 @@ export interface Invoice {
   lineItems: { description: string; amount: number }[];
   createdAt: Date;
   sentAt?: Date;
+}
+
+/** In-app notice. Derived from source data rather than stored — see notifications.ts. */
+export interface Notification {
+  id: string;
+  kind: NotificationKind;
+  referenceId: string;
+  title: string;
+  body: string;
+  date: Date;
+  severity: NotificationSeverity;
 }
 
 export interface Payment {

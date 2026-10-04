@@ -39,6 +39,12 @@ export default function DashboardPage() {
         {isAdmin && <Stat label="Coaches" value={coaches.length} href="/coaches" />}
         {isAdmin && <Stat label="Pending approvals" value={pending.length} href="/approvals" />}
         {role === "student" && outstanding !== null && <Stat label="Outstanding fees" value={outstanding} href="/invoices" />}
+        {role === "student" && (
+          <>
+            <Stat label="My attendance" value="—" href="/my-attendance" />
+            <Stat label="My progress" value="—" href="/my-report" />
+          </>
+        )}
         {role !== "student" && (
           <>
             <Stat label="Attendance" value="—" href="/attendance" />

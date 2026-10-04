@@ -5,7 +5,7 @@ import { useDocument } from "@/lib/hooks/use-document";
 import { useRequireRole } from "@/lib/guard";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
-import { collection, doc, query, setDoc, where } from "firebase/firestore";
+import { collection, doc, query, where, writeBatch } from "firebase/firestore";
 import type { AttendanceStatus, Batch, Student } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,13 +38,30 @@ export default function AttendancePage() {
 
   async function save() {
     if (!batchId) return toast.error("Select a batch");
+    const entries = Object.entries(marks);
+    if (entries.length === 0) return toast.error("Mark at least one student before saving");
     try {
-      await setDoc(
+      // Session doc plus one doc per student, in a single atomic batch. The
+      // per-student docs are what a student is allowed to read; the session doc
+      // holds the whole class and stays admin/coach-only.
+      const markedAt = new Date();
+      const markedBy = userData?.id ?? "";
+      const batch = writeBatch(db);
+
+      batch.set(
         doc(db, "attendance", batchId, "records", date),
-        { batchId, date, markedBy: userData?.id ?? "", markedAt: new Date(), students: marks, coachPresent: true },
+        { batchId, date, markedBy, markedAt, students: marks, coachPresent: true },
         { merge: true },
       );
-      toast.success("Attendance saved");
+      for (const [studentId, status] of entries) {
+        batch.set(
+          doc(db, "attendance", batchId, "records", date, "entries", studentId),
+          { studentId, batchId, date, status, markedBy, markedAt },
+          { merge: true },
+        );
+      }
+      await batch.commit();
+      toast.success(`Attendance saved for ${entries.length} student(s)`);
     } catch {
       toast.error("Could not save attendance");
     }

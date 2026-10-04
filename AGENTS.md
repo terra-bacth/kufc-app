@@ -35,6 +35,7 @@ Consequences that surprise people:
 npm run dev                 # localhost:3000
 npm run build               # Turbopack, no --turbopack flag needed
 node --test --experimental-strip-types tests/academy.test.mjs   # pure unit, no emulator
+npm test              # all 43 unit tests (no emulator needed)
 npm run test:rules          # security rules, needs Java 11+ (see below)
 ```
 
@@ -48,7 +49,7 @@ machine**. It lives at `C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot"
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
-npm run test:rules      # 25 firestore tests
+npm run test:rules      # 32 firestore tests
 npm run test:storage    # 16 storage tests
 ```
 
@@ -115,11 +116,59 @@ Storage upload limits (20MB PDF/image, 100MB video) are duplicated in
 `LIMITS` on the materials page and in `sizeOk()` in the storage rules. **Change
 both together.**
 
+## Student views and the two-shape attendance model
+
+Attendance is stored twice, on purpose, because one shape cannot serve both audiences:
+
+```
+attendance/{batchId}/records/{date}                    whole session — admin/coach only
+attendance/{batchId}/records/{date}/entries/{studentId} one student's mark — readable by that student
+```
+
+The session doc holds every student's mark, so it can never be readable by a student.
+The `entries/` doc is what makes `/my-attendance` possible without exposing the class.
+The coach writes both in **one `writeBatch`** so they cannot drift apart.
+
+Do not collapse these into one document, and do not drop the per-student write — the
+student calendar and the rules that permit it both depend on it.
+
+Student scores work the same way: `testScores/{testId}/scores/{studentId}` is keyed by
+student, so a student reads only their own, and only for tests in their own batch.
+`useCollection` exposes `doc.ref.path` as `path` because a collection group query
+**loses the parent `testId`** — `testIdFromScorePath()` in `src/lib/attendance.ts`
+recovers it. Without it every score row looks identical.
+
+## Notifications are derived, not stored
+
+The bell (`src/components/notifications-bell.tsx`) computes fee notices from invoices
+at render time via `deriveNotifications()`. Nothing is written to Firestore, so a badge
+can never disagree with an invoice, and paying off a balance makes the notice vanish
+without a delete step. Dismissals live in `localStorage` — a student clearing a badge on
+their own phone does not need a write round-trip.
+
+**This is in-app only: it shows when the app is open.** Real push needs FCM (a service
+worker, VAPID keys, and a server to send from) — that is the first thing this app would
+genuinely need a backend for. Not built.
+
+## Fee reminders are a WhatsApp deep link, not an API
+
+`buildFeeReminder()` produces the message text and a `wa.me` link. **Nothing is sent
+programmatically** — the admin's WhatsApp opens with the text and they tap send. Real
+outbound messaging needs the paid WhatsApp Business Platform. The admin's own number is
+entered once on the invoices page; with no number stored, the text is still copyable.
+
+## PDF invoices use the browser's print dialog
+
+`InvoicePrint` writes a small HTML document and calls `window.print()`. A PDF library
+would be ~200KB and still would not match the app's styling. Output is the browser's
+print-to-PDF, so fonts and layout are the browser's, not ours.
+
 ## Known gaps
 
-- **Student attendance view is blocked by design.** An attendance record holds a map
-  of every student in the batch, so granting student reads would expose the whole
-  class. Per-student documents are needed before that view can ship.
+- **Attendance marked before this change has no `entries/` docs**, so those sessions are
+  invisible to students. Re-save the date in the coach UI to backfill, or run a one-off
+  script over existing `attendance/*/records/*`.
+- **No push notifications** (FCM), only in-app — see Notifications above.
 - **Coach batch filtering is client-side only.** Harmless to the user, but it is not
   a security control. The rules are.
 - **A wrong or missing batch code never blocks approval.** `resolveStudentBatch` in

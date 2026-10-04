@@ -11,6 +11,7 @@ import { signOutUser } from "@/lib/firebase/auth";
 import Link from "next/link";
 import { MobileNav } from "./mobile-nav";
 import { toast } from "sonner";
+import { NotificationsBell } from "@/components/notifications-bell";
 
 export function Header() {
   const { user, userData } = useAuth();
@@ -20,6 +21,8 @@ export function Header() {
         <MobileNav />
         <span className="md:hidden font-medium">KUFC</span>
       </div>
+      <div className="flex items-center gap-1">
+        <NotificationsBell />
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" />}>
             {userData?.displayName || user?.email?.split("@")[0] || "User"}
@@ -29,6 +32,7 @@ export function Header() {
           <DropdownMenuItem onClick={() => { signOutUser().catch(() => toast.error("Could not sign out. Try again.")); }}>Sign out</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     </header>
   );
 }
